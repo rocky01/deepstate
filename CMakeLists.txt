@@ -17,6 +17,7 @@ cmake_minimum_required(VERSION 2.8)
 
 option(DEEPSTATE_LIBFUZZER, OFF)
 option(DEEPSTATE_AFL, OFF)
+option(DEEPSTATE_HFUZZ, OFF)
 option(DEEPSTATE_ANGORA, OFF)
 option(DEEPSTATE_NOSTATIC, OFF)
 
@@ -164,15 +165,37 @@ if (DEEPSTATE_AFL)
     )
 endif()
 
+
+if (DEEPSTATE_HFUZZ)
+    add_library(${PROJECT_NAME}_hfuzz STATIC
+       src/lib/DeepState.c
+       src/lib/Log.c
+       src/lib/Option.c
+       src/lib/Stream.c
+    )
+
+    target_compile_options(${PROJECT_NAME}_hfuzz PUBLIC -mno-avx)
+
+    target_include_directories(${PROJECT_NAME}_hfuzz
+       PUBLIC SYSTEM "${CMAKE_SOURCE_DIR}/src/include"
+    )
+
+    install(
+       TARGETS ${PROJECT_NAME} ${PROJECT_NAME}_hfuzz
+       LIBRARY DESTINATION lib
+       ARCHIVE DESTINATION lib
+    )
+endif()
+
+
 if (DEEPSTATE_ANGORA)
+    if(DEFINED ENV{USE_TRACK})
+	set(PROJECT_NAME ${PROJECT_NAME}_taint)
+    else()
+	set(PROJECT_NAME ${PROJECT_NAME}_fast)
+    endif()
 
-	if(DEFINED ENV{USE_TRACK})
-		set(PROJECT_NAME ${PROJECT_NAME}_taint)
-	else()
-		set(PROJECT_NAME ${PROJECT_NAME}_fast)
-	endif()
-
-	add_library(${PROJECT_NAME} STATIC
+    add_library(${PROJECT_NAME} STATIC
        src/lib/DeepState.c
        src/lib/Log.c
        src/lib/Option.c
@@ -191,6 +214,7 @@ if (DEEPSTATE_ANGORA)
        ARCHIVE DESTINATION lib
     )
 endif()
+
 
 set(SETUP_PY_IN "${CMAKE_SOURCE_DIR}/bin/setup.py.in")
 set(SETUP_PY "${CMAKE_CURRENT_BINARY_DIR}/setup.py")
