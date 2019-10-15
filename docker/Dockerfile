@@ -2,15 +2,15 @@ FROM ubuntu:18.04
 
 # Set up the non-root user
 RUN apt-get update \
-    &&  apt-get -y install sudo \
+    && apt-get -y install sudo \
     && useradd -ms /bin/bash user && echo "user:user" | chpasswd && adduser user sudo
-
 ADD /docker/sudoers.txt /etc/sudoers
 
+# Define envvars for fuzzer paths
 ENV ECLIPSER_HOME /home/user/Eclipser
+ENV ANGORA=/home/user/Angora
 
 WORKDIR /home/user
-
 COPY . /home/user/deepstate
 
 # Eclipser requires deb-src entries
@@ -38,8 +38,12 @@ RUN apt-get update \
     && apt-get install -y dotnet-sdk-2.2
 
 # Install Angora dependencies
-#RUN apt-get install -y rustc \
-#    cargo libstdc++-7-dev
+RUN apt-get install -y rustc \
+    cargo libstdc++-7-dev
+
+# Install Honggfuzz dependencies
+RUN apt-get install -y binutils-dev \
+    libunwind-dev
 
 # Install DeepState/AFL/libFuzzer dependencies
 RUN apt-get install -y build-essential \
@@ -48,8 +52,8 @@ RUN apt-get install -y build-essential \
     python3-setuptools libffi-dev z3 python3-pip \
     && rm -rf /var/lib/apt/lists/*
 
+# Switch to permissioned user
 RUN chown -R user:user /home/user
-
 USER user
 
 # Install AFL
@@ -60,19 +64,22 @@ RUN wget http://lcamtuf.coredump.cx/afl/releases/afl-latest.tgz \
     && make \
     && sudo make install
 
+# Install Honggfuzz
+RUN git clone https://github.com/google/honggfuzz \
+    && cd honggfuzz \
+    && make \
+    && sudo make install
+
 # Install Eclipser
 RUN git clone https://github.com/SoftSec-KAIST/Eclipser \
     && cd Eclipser \
-    && make \
-    && cd ../
+    && make
 
 # Install Angora
-#RUN git clone https://github.com/AngoraFuzzer/Angora \
-#    && cd Angora \
-#    && ./build/build.sh \
-#    && cd ../
+RUN git clone https://github.com/AngoraFuzzer/Angora \
+    && cd Angora \
+    && ./build/build.sh
 
-#ENV ANGORA=/home/user/Angora
 
 # Install DeepState using a few different compilers for AFL/libFuzzer/Eclipser/Angora+normal
 RUN cd deepstate \
@@ -80,19 +87,27 @@ RUN cd deepstate \
     && rm -Rf build \
     && mkdir -p build \
     && cd build \
-    && rm -rf CMakeFiles CMakeCache.txt \
-    && CXX=afl-clang++ CC=afl-clang cmake -DDEEPSTATE_AFL=ON ../ \
-    && sudo make install \
+
     && rm -rf CMakeFiles CMakeCache.txt \
     && CXX=clang++ CC=clang cmake -DDEEPSTATE_LIBFUZZER=ON ../ \
     && sudo make install \
-#    && rm -rf CMakeFiles CMakeCache.txt \
-#    && USE_TRACK=1 CXX=$ANGORA/bin/angora-clang++ CC=$ANGORA/bin/angora-clang cmake -DDEEPSTATE_ANGORA=ON ../ \
-#    && export USE_TRACK=1 && sudo -E sh -c 'make -i install' \
-#    && make clean \
-#    && rm -rf CMakeFiles CMakeCache.txt \
-#    && CXX=$ANGORA/bin/angora-clang++ CC=$ANGORA/bin/angora-clang cmake -DDEEPSTATE_ANGORA=ON ../ \
-#    && export USE_FAST=1 && sudo -E sh -c 'make install' \
+
+    && rm -rf CMakeFiles CMakeCache.txt \
+    && CXX=afl-clang++ CC=afl-clang cmake -DDEEPSTATE_AFL=ON ../ \
+    && sudo make install \
+
+    && rm -rf CMakeFiles CMakeCache.txt \
+    && CXX=hfuzz-clang++ CC=hfuzz-clang cmake -DDEEPSTATE_HFUZZ=ON ../ \
+    && sudo make install \
+
+    && rm -rf CMakeFiles CMakeCache.txt \
+    && USE_TRACK=1 CXX=$ANGORA/bin/angora-clang++ CC=$ANGORA/bin/angora-clang cmake -DDEEPSTATE_ANGORA=ON ../ \
+    && export USE_TRACK=1 && sudo -E sh -c 'make -i install' \
+    && make clean \
+    && rm -rf CMakeFiles CMakeCache.txt \
+    && CXX=$ANGORA/bin/angora-clang++ CC=$ANGORA/bin/angora-clang cmake -DDEEPSTATE_ANGORA=ON ../ \
+    && export USE_FAST=1 && sudo -E sh -c 'make install' \
+
     && cd .. \
     && sudo pip3 install 'z3-solver==4.5.1.0.post2' angr git+git://github.com/trailofbits/manticore.git \
     && sudo python3 ./build/setup.py install
